@@ -30,6 +30,7 @@ data class BuzzerUiState(
     val ringing: Boolean = false,
     val connection: ConnectionState = ConnectionState.Checking,
     val commandInFlight: Boolean = false,
+    val pendingCommand: BuzzerCommand? = null,
     val acknowledgementVisible: Boolean = false,
 )
 
@@ -57,7 +58,7 @@ class BuzzerViewModel(
     private var commandGeneration = 0L
     private var consecutivePollFailures = 0
     private var lastConfirmedRinging: Boolean? = null
-    private var pendingReconciliation: BuzzerCommand? = null
+    private var pendingCommandWasAttempted = false
 
     fun startPolling() {
         pollingRequested = true
@@ -75,25 +76,25 @@ class BuzzerViewModel(
                 if (generation != pollingGeneration) return@collectLatest
                 result.fold(
                     onSuccess = { status ->
-                        handlePolledStatus(status)
+                        val pendingCommand = _uiState.value.pendingCommand
+                        if (pendingCommand == null) {
+                            handlePolledStatus(status)
+                        } else {
+                            handleReconnectStatus(pendingCommand, status)
+                        }
                     },
                     onFailure = {
                         consecutivePollFailures++
                         if (consecutivePollFailures >= OFFLINE_FAILURE_THRESHOLD) {
-                            val unresolvedCommand = pendingReconciliation
-                            pendingReconciliation = null
                             _uiState.update {
                                 it.copy(
-                                    ringing = lastConfirmedRinging ?: false,
+                                    ringing = if (it.pendingCommand == null) {
+                                        lastConfirmedRinging ?: false
+                                    } else {
+                                        it.ringing
+                                    },
                                     connection = ConnectionState.Offline,
                                     commandInFlight = false,
-                                )
-                            }
-                            if (unresolvedCommand != null) {
-                                _effects.tryEmit(
-                                    BuzzerUiEffect.CommandFailed(
-                                        "Could not reach the bedroom buzzer",
-                                    ),
                                 )
                             }
                         }
@@ -109,16 +110,32 @@ class BuzzerViewModel(
     }
 
     fun toggleRinging() {
-        if (_uiState.value.connection != ConnectionState.Connected) return
-
         val targetRinging = !_uiState.value.ringing
         val command = if (targetRinging) BuzzerCommand.Ring else BuzzerCommand.Stop
-        val generation = ++commandGeneration
+        pendingCommandWasAttempted = false
 
-        pendingReconciliation = null
         _uiState.update {
             it.copy(
                 ringing = targetRinging,
+                pendingCommand = command,
+                commandInFlight = false,
+                acknowledgementVisible = false,
+            )
+        }
+
+        if (_uiState.value.connection != ConnectionState.Connected) return
+
+        sendCommand(command)
+    }
+
+    private fun sendCommand(command: BuzzerCommand) {
+        val generation = ++commandGeneration
+        pendingCommandWasAttempted = false
+
+        _uiState.update {
+            it.copy(
+                ringing = command == BuzzerCommand.Ring,
+                pendingCommand = null,
                 commandInFlight = true,
                 acknowledgementVisible = false,
             )
@@ -141,16 +158,14 @@ class BuzzerViewModel(
                     }
 
                     is CommandOutcome.Unreachable -> {
-                        pendingReconciliation = command
-                        consecutivePollFailures = 0
+                        queueUnreachableCommand(command)
                     }
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
                 if (generation == commandGeneration) {
-                    pendingReconciliation = command
-                    consecutivePollFailures = 0
+                    queueUnreachableCommand(command)
                 }
             } finally {
                 if (generation == commandGeneration) {
@@ -161,14 +176,61 @@ class BuzzerViewModel(
         }
     }
 
-    private fun handlePolledStatus(status: BuzzerStatus) {
-        val unresolvedCommand = pendingReconciliation
-        if (unresolvedCommand != null) {
-            pendingReconciliation = null
-            resolveCommandWithStatus(unresolvedCommand, status)
+    private fun queueUnreachableCommand(command: BuzzerCommand) {
+        consecutivePollFailures = 0
+        pendingCommandWasAttempted = true
+        _uiState.update {
+            it.copy(
+                ringing = command == BuzzerCommand.Ring,
+                connection = ConnectionState.Checking,
+                commandInFlight = false,
+                pendingCommand = command,
+            )
+        }
+    }
+
+    private fun handleReconnectStatus(command: BuzzerCommand, status: BuzzerStatus) {
+        consecutivePollFailures = 0
+        lastConfirmedRinging = status.ringing
+        val quicklyAcknowledged = pendingCommandWasAttempted &&
+            command == BuzzerCommand.Ring &&
+            !status.ringing &&
+            status.source == BuzzerChangeSource.BedroomButton
+
+        if (quicklyAcknowledged) {
+            pendingCommandWasAttempted = false
+            _uiState.update {
+                it.copy(
+                    ringing = false,
+                    connection = ConnectionState.Connected,
+                    commandInFlight = false,
+                    pendingCommand = null,
+                    acknowledgementVisible = true,
+                )
+            }
+            _effects.tryEmit(BuzzerUiEffect.ExternalAcknowledgement)
             return
         }
 
+        if (status.ringing == (command == BuzzerCommand.Ring)) {
+            pendingCommandWasAttempted = false
+            _uiState.update {
+                it.copy(
+                    ringing = status.ringing,
+                    connection = ConnectionState.Connected,
+                    commandInFlight = false,
+                    pendingCommand = null,
+                )
+            }
+            _effects.tryEmit(BuzzerUiEffect.CommandSucceeded(command))
+            return
+        }
+
+        _uiState.update { it.copy(connection = ConnectionState.Connected) }
+        sendCommand(command)
+    }
+
+    private fun handlePolledStatus(status: BuzzerStatus) {
         val externallyStopped = lastConfirmedRinging == true &&
             !status.ringing &&
             (status.source == BuzzerChangeSource.BedroomButton || status.source == null)
@@ -178,6 +240,7 @@ class BuzzerViewModel(
             it.copy(
                 ringing = status.ringing,
                 connection = ConnectionState.Connected,
+                pendingCommand = null,
                 acknowledgementVisible = when {
                     externallyStopped -> true
                     status.ringing -> false
@@ -197,12 +260,14 @@ class BuzzerViewModel(
             status.source == BuzzerChangeSource.BedroomButton
 
         consecutivePollFailures = 0
+        pendingCommandWasAttempted = false
         lastConfirmedRinging = status.ringing
         _uiState.update {
             it.copy(
                 ringing = status.ringing,
                 connection = ConnectionState.Connected,
                 commandInFlight = false,
+                pendingCommand = null,
                 acknowledgementVisible = quicklyAcknowledged,
             )
         }

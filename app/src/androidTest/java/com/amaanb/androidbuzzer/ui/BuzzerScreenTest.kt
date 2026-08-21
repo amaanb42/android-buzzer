@@ -1,20 +1,17 @@
 package com.amaanb.androidbuzzer.ui
 
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.amaanb.androidbuzzer.data.BuzzerCommand
 import com.amaanb.androidbuzzer.ui.theme.BuzzerTheme
 import org.junit.Rule
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BuzzerScreenTest {
@@ -36,7 +33,7 @@ class BuzzerScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Ready").assertIsDisplayed()
+        composeRule.onNodeWithText("Idle").assertIsDisplayed()
         composeRule.onNodeWithText("Ring").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithText("Connected").assertTextEquals("Connected")
     }
@@ -88,7 +85,7 @@ class BuzzerScreenTest {
     }
 
     @Test
-    fun checkingStateHidesLabelAndRejectsButtonInput() {
+    fun checkingStateShowsLabelAndAcceptsButtonInput() {
         var toggled = false
         composeRule.setContent {
             BuzzerTheme(darkTheme = false) {
@@ -103,14 +100,13 @@ class BuzzerScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Ready").assertDoesNotExist()
-        composeRule.onNodeWithText("Ringing").assertDoesNotExist()
-        composeRule.onNodeWithText("Ring").assertIsDisplayed().assertIsNotEnabled().performClick()
-        composeRule.runOnIdle { assertFalse(toggled) }
+        composeRule.onNodeWithText("Idle").assertIsDisplayed()
+        composeRule.onNodeWithText("Ring").assertIsDisplayed().assertIsEnabled().performClick()
+        composeRule.runOnIdle { assertTrue(toggled) }
     }
 
     @Test
-    fun offlineStateHidesStaleRingingLabelAndDisablesButton() {
+    fun offlineStateShowsRingingLabelAndKeepsButtonEnabled() {
         composeRule.setContent {
             BuzzerTheme(darkTheme = false) {
                 BuzzerScreen(
@@ -127,20 +123,21 @@ class BuzzerScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Ready").assertDoesNotExist()
-        composeRule.onNodeWithText("Ringing").assertDoesNotExist()
-        composeRule.onNodeWithText("Stop").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithText("Ringing").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithText("Offline").assertIsDisplayed()
     }
 
     @Test
-    fun readyLabelUsesAnimatedVisibilityWhenConnectionChanges() {
-        composeRule.mainClock.autoAdvance = false
-        var state by mutableStateOf(BuzzerUiState(connection = ConnectionState.Checking))
+    fun pendingCommandShowsReconnectMessage() {
         composeRule.setContent {
             BuzzerTheme(darkTheme = false) {
                 BuzzerScreen(
-                    state = state,
+                    state = BuzzerUiState(
+                        ringing = true,
+                        connection = ConnectionState.Offline,
+                        pendingCommand = BuzzerCommand.Ring,
+                    ),
                     hasLocalNetworkPermission = true,
                     permissionPermanentlyDenied = false,
                     onToggleRinging = {},
@@ -150,23 +147,11 @@ class BuzzerScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Ready").assertDoesNotExist()
-
-        composeRule.runOnIdle {
-            state = BuzzerUiState(connection = ConnectionState.Connected)
-        }
-        composeRule.mainClock.advanceTimeByFrame()
-        composeRule.onNodeWithText("Ready").assertExists()
-        composeRule.mainClock.advanceTimeBy(10_000)
-        composeRule.onNodeWithText("Ready").assertIsDisplayed()
-
-        composeRule.runOnIdle {
-            state = BuzzerUiState(connection = ConnectionState.Checking)
-        }
-        composeRule.mainClock.advanceTimeByFrame()
-        composeRule.onNodeWithText("Ready").assertExists()
-        composeRule.mainClock.advanceTimeBy(10_000)
-        composeRule.onNodeWithText("Ready").assertDoesNotExist()
+        composeRule.onNodeWithText(
+            "Command will be sent once connection is established.",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("Ringing").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop").assertIsEnabled()
     }
 
     @Test

@@ -184,7 +184,7 @@ class BuzzerViewModelTest {
     }
 
     @Test
-    fun `unreachable command reconciles before error`() = runTest(dispatcher) {
+    fun `unreachable command is requeued until connection returns`() = runTest(dispatcher) {
         val repository = FakeRepository()
         val viewModel = BuzzerViewModel(repository)
         viewModel.startPolling()
@@ -201,25 +201,30 @@ class BuzzerViewModelTest {
         runCurrent()
 
         assertTrue(viewModel.uiState.value.ringing)
-        assertTrue(viewModel.uiState.value.commandInFlight)
-        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
+        assertFalse(viewModel.uiState.value.commandInFlight)
+        assertEquals(BuzzerCommand.Ring, viewModel.uiState.value.pendingCommand)
+        assertEquals(ConnectionState.Checking, viewModel.uiState.value.connection)
 
-        repeat(2) {
+        repeat(3) {
             repository.statuses.emit(Result.failure(IllegalStateException("offline")))
             runCurrent()
         }
-        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
 
-        repository.statuses.emit(Result.failure(IllegalStateException("offline")))
-        runCurrent()
-
-        assertFalse(viewModel.uiState.value.ringing)
+        assertTrue(viewModel.uiState.value.ringing)
         assertFalse(viewModel.uiState.value.commandInFlight)
         assertEquals(ConnectionState.Offline, viewModel.uiState.value.connection)
-        assertEquals(
-            BuzzerUiEffect.CommandFailed("Could not reach the bedroom buzzer"),
-            effect.await(),
-        )
+        assertEquals(BuzzerCommand.Ring, viewModel.uiState.value.pendingCommand)
+
+        repository.sendBlock = {
+            CommandOutcome.Confirmed(BuzzerStatus(ringing = true))
+        }
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        runCurrent()
+
+        assertEquals(listOf(BuzzerCommand.Ring, BuzzerCommand.Ring), repository.commands)
+        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
+        assertEquals(null, viewModel.uiState.value.pendingCommand)
+        assertEquals(BuzzerUiEffect.CommandSucceeded(BuzzerCommand.Ring), effect.await())
     }
 
     @Test
@@ -239,6 +244,9 @@ class BuzzerViewModelTest {
 
         viewModel.toggleRinging()
         runCurrent()
+        assertEquals(BuzzerCommand.Stop, viewModel.uiState.value.pendingCommand)
+        assertEquals(ConnectionState.Checking, viewModel.uiState.value.connection)
+
         repository.statuses.emit(
             Result.success(BuzzerStatus(ringing = false, source = BuzzerChangeSource.Api)),
         )
@@ -372,29 +380,65 @@ class BuzzerViewModelTest {
     }
 
     @Test
-    fun `commands are rejected while checking or offline`() = runTest(dispatcher) {
+    fun `disconnected taps coalesce to the latest command`() = runTest(dispatcher) {
         val repository = FakeRepository()
         val viewModel = BuzzerViewModel(repository)
 
         viewModel.toggleRinging()
-        runCurrent()
-
-        assertTrue(repository.commands.isEmpty())
-        assertFalse(viewModel.uiState.value.ringing)
+        viewModel.toggleRinging()
+        viewModel.toggleRinging()
 
         viewModel.startPolling()
         runCurrent()
-        repeat(3) {
-            repository.statuses.emit(Result.failure(IllegalStateException("offline")))
-            runCurrent()
-        }
-        assertEquals(ConnectionState.Offline, viewModel.uiState.value.connection)
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        runCurrent()
+
+        assertEquals(listOf(BuzzerCommand.Ring), repository.commands)
+        assertTrue(viewModel.uiState.value.ringing)
+        assertEquals(null, viewModel.uiState.value.pendingCommand)
+        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
+    }
+
+    @Test
+    fun `matching reconnect status satisfies queue without sending`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = BuzzerViewModel(repository)
+        val effect = async { viewModel.effects.first() }
+        runCurrent()
 
         viewModel.toggleRinging()
+        viewModel.startPolling()
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = true)))
         runCurrent()
 
         assertTrue(repository.commands.isEmpty())
-        assertFalse(viewModel.uiState.value.ringing)
+        assertTrue(viewModel.uiState.value.ringing)
+        assertEquals(null, viewModel.uiState.value.pendingCommand)
+        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
+        assertEquals(BuzzerUiEffect.CommandSucceeded(BuzzerCommand.Ring), effect.await())
+    }
+
+    @Test
+    fun `pending command survives polling stop and restart`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = BuzzerViewModel(repository)
+
+        viewModel.toggleRinging()
+        viewModel.startPolling()
+        runCurrent()
+        viewModel.stopPolling()
+        runCurrent()
+
+        assertEquals(BuzzerCommand.Ring, viewModel.uiState.value.pendingCommand)
+
+        viewModel.startPolling()
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        runCurrent()
+
+        assertEquals(listOf(BuzzerCommand.Ring), repository.commands)
+        assertEquals(null, viewModel.uiState.value.pendingCommand)
     }
 
     private class FakeRepository : BuzzerRepository {

@@ -148,27 +148,16 @@ private fun BuzzerControls(
     onToggleRinging: () -> Unit,
     contentPadding: PaddingValues,
 ) {
-    val isReady = state.connection == ConnectionState.Connected
-    val enabledButtonContainer = when {
+    val targetButtonContainer = when {
         state.ringing && darkTheme -> RingingButtonDark
         state.ringing -> RingingButtonLight
         darkTheme -> IdleButtonDark
         else -> IdleButtonLight
     }
-    val enabledButtonContent = if (darkTheme) {
+    val targetButtonContent = if (darkTheme) {
         if (state.ringing) Color(0xFF062E6F) else Color(0xFF690005)
     } else {
         Color.White
-    }
-    val targetButtonContainer = if (isReady) {
-        enabledButtonContainer
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
-    }
-    val targetButtonContent = if (isReady) {
-        enabledButtonContent
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
     }
     val buttonContainer by animateColorAsState(
         targetValue = targetButtonContainer,
@@ -193,7 +182,7 @@ private fun BuzzerControls(
         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
         label = "ring button icon rotation",
     )
-    val stateLabel = if (state.ringing) "Ringing" else "Ready"
+    val stateLabel = if (state.ringing) "Ringing" else "Idle"
 
     BoxWithConstraints(
         modifier = Modifier
@@ -224,34 +213,25 @@ private fun BuzzerControls(
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                AnimatedVisibility(
-                    visible = isReady,
-                    enter = fadeIn(
-                        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                    ) + expandVertically(
-                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                        expandFrom = Alignment.CenterVertically,
-                    ),
-                    exit = fadeOut(
-                        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
-                    ) + shrinkVertically(
-                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                        shrinkTowards = Alignment.CenterVertically,
-                    ),
-                    label = "buzzer state label",
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (state.pendingCommand != null) {
+                    Text(
+                        text = "Command will be sent once connection is established.",
+                        modifier = Modifier.padding(bottom = 16.dp),
+                        color = contentColor(darkTheme),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = stateLabel,
                             color = contentColor(darkTheme),
                             style = MaterialTheme.typography.displaySmall,
                         )
                         Spacer(Modifier.height(24.dp))
-                    }
                 }
                 Button(
                     onClick = onToggleRinging,
-                    enabled = isReady,
                     modifier = Modifier
                         .size(heroSize)
                         .semantics {
@@ -268,8 +248,6 @@ private fun BuzzerControls(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = buttonContainer,
                         contentColor = buttonContent,
-                        disabledContainerColor = buttonContainer,
-                        disabledContentColor = buttonContent,
                     ),
                     contentPadding = PaddingValues(24.dp),
                 ) {

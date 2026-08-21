@@ -15,8 +15,11 @@ local Wi-Fi HTTP API and mirrors state changes made by either physical button.
   actions produce rejection feedback and a visible error.
 - Ring and Stop update immediately, and rapid taps converge on the latest choice.
   Commands preempt polling, retry once, and verify status before reporting an error.
+- Ring and Stop remain available while connecting or offline. The app keeps the
+  latest requested state in memory and sends it when the buzzer becomes reachable;
+  obsolete intermediate taps are not replayed.
 - If a command remains ambiguous after those attempts, foreground polling
-  reconciles it before showing an error. Updated bedroom firmware identifies
+  reconciles or retries it after connectivity returns. Updated bedroom firmware identifies
   whether a state change came from its button, HTTP, or HC-12 so only the
   bedroom button produces the Zaki acknowledgement.
 - A single failed status request keeps the last confirmed state and connection.
