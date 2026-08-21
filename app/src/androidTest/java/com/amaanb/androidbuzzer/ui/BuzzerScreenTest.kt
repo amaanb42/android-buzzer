@@ -1,13 +1,19 @@
 package com.amaanb.androidbuzzer.ui
 
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.amaanb.androidbuzzer.ui.theme.BuzzerTheme
 import org.junit.Rule
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class BuzzerScreenTest {
@@ -77,6 +83,88 @@ class BuzzerScreenTest {
 
         composeRule.onNodeWithText("Stop").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithText("Updating…").assertIsDisplayed()
+    }
+
+    @Test
+    fun checkingStateHidesLabelAndRejectsButtonInput() {
+        var toggled = false
+        composeRule.setContent {
+            BuzzerTheme(darkTheme = false) {
+                BuzzerScreen(
+                    state = BuzzerUiState(connection = ConnectionState.Checking),
+                    hasLocalNetworkPermission = true,
+                    permissionPermanentlyDenied = false,
+                    onToggleRinging = { toggled = true },
+                    onRequestPermission = {},
+                    snackbarHostState = SnackbarHostState(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Ready").assertDoesNotExist()
+        composeRule.onNodeWithText("Ringing").assertDoesNotExist()
+        composeRule.onNodeWithText("Ring").assertIsDisplayed().assertIsNotEnabled().performClick()
+        composeRule.runOnIdle { assertFalse(toggled) }
+    }
+
+    @Test
+    fun offlineStateHidesStaleRingingLabelAndDisablesButton() {
+        composeRule.setContent {
+            BuzzerTheme(darkTheme = false) {
+                BuzzerScreen(
+                    state = BuzzerUiState(
+                        ringing = true,
+                        connection = ConnectionState.Offline,
+                    ),
+                    hasLocalNetworkPermission = true,
+                    permissionPermanentlyDenied = false,
+                    onToggleRinging = {},
+                    onRequestPermission = {},
+                    snackbarHostState = SnackbarHostState(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Ready").assertDoesNotExist()
+        composeRule.onNodeWithText("Ringing").assertDoesNotExist()
+        composeRule.onNodeWithText("Stop").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithText("Offline").assertIsDisplayed()
+    }
+
+    @Test
+    fun readyLabelUsesAnimatedVisibilityWhenConnectionChanges() {
+        composeRule.mainClock.autoAdvance = false
+        var state by mutableStateOf(BuzzerUiState(connection = ConnectionState.Checking))
+        composeRule.setContent {
+            BuzzerTheme(darkTheme = false) {
+                BuzzerScreen(
+                    state = state,
+                    hasLocalNetworkPermission = true,
+                    permissionPermanentlyDenied = false,
+                    onToggleRinging = {},
+                    onRequestPermission = {},
+                    snackbarHostState = SnackbarHostState(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Ready").assertDoesNotExist()
+
+        composeRule.runOnIdle {
+            state = BuzzerUiState(connection = ConnectionState.Connected)
+        }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("Ready").assertExists()
+        composeRule.mainClock.advanceTimeBy(10_000)
+        composeRule.onNodeWithText("Ready").assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            state = BuzzerUiState(connection = ConnectionState.Checking)
+        }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("Ready").assertExists()
+        composeRule.mainClock.advanceTimeBy(10_000)
+        composeRule.onNodeWithText("Ready").assertDoesNotExist()
     }
 
     @Test

@@ -109,6 +109,8 @@ class BuzzerViewModel(
     }
 
     fun toggleRinging() {
+        if (_uiState.value.connection != ConnectionState.Connected) return
+
         val targetRinging = !_uiState.value.ringing
         val command = if (targetRinging) BuzzerCommand.Ring else BuzzerCommand.Stop
         val generation = ++commandGeneration

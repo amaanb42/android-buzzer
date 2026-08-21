@@ -164,6 +164,10 @@ class BuzzerViewModelTest {
     fun `button sends command for current state and applies confirmed response`() = runTest(dispatcher) {
         val repository = FakeRepository()
         val viewModel = BuzzerViewModel(repository)
+        viewModel.startPolling()
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        runCurrent()
 
         viewModel.toggleRinging()
         runCurrent()
@@ -284,6 +288,10 @@ class BuzzerViewModelTest {
             sendBlock = { CommandOutcome.NotApplied(BuzzerStatus(ringing = false)) }
         }
         val viewModel = BuzzerViewModel(repository)
+        viewModel.startPolling()
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        runCurrent()
         val effect = async { viewModel.effects.first() }
         runCurrent()
 
@@ -313,6 +321,10 @@ class BuzzerViewModelTest {
             }
         }
         val viewModel = BuzzerViewModel(repository)
+        viewModel.startPolling()
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        runCurrent()
 
         viewModel.toggleRinging()
         runCurrent()
@@ -331,8 +343,13 @@ class BuzzerViewModelTest {
     @Test
     fun `command cancels polling before it is sent`() = runTest(dispatcher) {
         val pollingCancelled = CompletableDeferred<Unit>()
+        var initialStatusEmitted = false
         val repository = object : BuzzerRepository {
             override fun observeStatus(): Flow<Result<BuzzerStatus>> = flow {
+                if (!initialStatusEmitted) {
+                    initialStatusEmitted = true
+                    emit(Result.success(BuzzerStatus(ringing = false)))
+                }
                 try {
                     awaitCancellation()
                 } finally {
@@ -352,6 +369,32 @@ class BuzzerViewModelTest {
 
         assertTrue(pollingCancelled.isCompleted)
         assertTrue(viewModel.uiState.value.ringing)
+    }
+
+    @Test
+    fun `commands are rejected while checking or offline`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = BuzzerViewModel(repository)
+
+        viewModel.toggleRinging()
+        runCurrent()
+
+        assertTrue(repository.commands.isEmpty())
+        assertFalse(viewModel.uiState.value.ringing)
+
+        viewModel.startPolling()
+        runCurrent()
+        repeat(3) {
+            repository.statuses.emit(Result.failure(IllegalStateException("offline")))
+            runCurrent()
+        }
+        assertEquals(ConnectionState.Offline, viewModel.uiState.value.connection)
+
+        viewModel.toggleRinging()
+        runCurrent()
+
+        assertTrue(repository.commands.isEmpty())
+        assertFalse(viewModel.uiState.value.ringing)
     }
 
     private class FakeRepository : BuzzerRepository {
