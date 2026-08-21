@@ -2,6 +2,7 @@ package com.amaanb.androidbuzzer.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -52,15 +53,22 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -172,6 +180,19 @@ private fun BuzzerControls(
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "buzzer button content",
     )
+    var previousCommandInFlight by remember { mutableStateOf(state.commandInFlight) }
+    var iconRotationTarget by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(state.commandInFlight) {
+        if (state.commandInFlight != previousCommandInFlight) {
+            previousCommandInFlight = state.commandInFlight
+            iconRotationTarget += 360f
+        }
+    }
+    val iconRotation by animateFloatAsState(
+        targetValue = iconRotationTarget,
+        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+        label = "ring button icon rotation",
+    )
     val stateLabel = if (state.ringing) "Ringing" else "Ready"
 
     BoxWithConstraints(
@@ -252,13 +273,22 @@ private fun BuzzerControls(
                     ),
                     contentPadding = PaddingValues(24.dp),
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        AnimatedContent(
-                            targetState = state.ringing,
-                            transitionSpec = { fadeIn() togetherWith fadeOut() },
-                            label = "ring button content",
-                        ) { ringing ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    AnimatedContent(
+                        targetState = state.ringing to state.commandInFlight,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        label = "ring button content",
+                    ) { (ringing, commandInFlight) ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (commandInFlight) {
+                                LoadingIndicator(
+                                    modifier = Modifier
+                                        .size(68.dp)
+                                        .semantics {
+                                            contentDescription = "Updating buzzer"
+                                        },
+                                    color = buttonContent,
+                                )
+                            } else {
                                 Icon(
                                     imageVector = if (ringing) {
                                         Icons.Rounded.StopCircle
@@ -266,23 +296,16 @@ private fun BuzzerControls(
                                         Icons.Rounded.NotificationsActive
                                     },
                                     contentDescription = null,
-                                    modifier = Modifier.size(68.dp),
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                Text(
-                                    text = if (ringing) "Stop" else "Ring",
-                                    style = MaterialTheme.typography.titleLarge,
+                                    modifier = Modifier
+                                        .size(68.dp)
+                                        .graphicsLayer { rotationZ = iconRotation },
                                 )
                             }
-                        }
-                        if (state.commandInFlight) {
-                            Spacer(Modifier.height(8.dp))
-                            LoadingIndicator(
-                                modifier = Modifier.size(28.dp),
-                                color = buttonContent,
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = if (ringing) "Stop" else "Ring",
+                                style = MaterialTheme.typography.titleLarge,
                             )
-                            Spacer(Modifier.height(4.dp))
-                            Text("Updating…", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }

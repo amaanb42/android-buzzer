@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.amaanb.androidbuzzer.ui.theme.BuzzerTheme
@@ -82,7 +83,8 @@ class BuzzerScreenTest {
         }
 
         composeRule.onNodeWithText("Stop").assertIsDisplayed().assertIsEnabled()
-        composeRule.onNodeWithText("Updating…").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Updating buzzer").assertIsDisplayed()
+        composeRule.onNodeWithText("Updating…").assertDoesNotExist()
     }
 
     @Test
