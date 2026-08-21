@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
+import android.view.View
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -86,11 +87,11 @@ class MainActivity : ComponentActivity() {
                     viewModel.effects.collect { effect ->
                         when (effect) {
                             is BuzzerUiEffect.CommandSucceeded -> {
-                                view.performHapticFeedback(successHaptic(effect.command))
+                                playStrongHaptic(view, successHaptic(effect.command))
                             }
 
                             is BuzzerUiEffect.CommandFailed -> {
-                                view.performHapticFeedback(failureHaptic())
+                                playStrongHaptic(view, failureHaptic(), pulseCount = 3)
                                 snackbarHostState.showSnackbar(effect.message)
                             }
 
@@ -145,12 +146,22 @@ class MainActivity : ComponentActivity() {
 
     private fun failureHaptic(): Int = HapticFeedbackConstants.REJECT
 
+    private fun playStrongHaptic(view: View, feedbackConstant: Int, pulseCount: Int = 2) {
+        repeat(pulseCount) { pulse ->
+            view.postDelayed(
+                { view.performHapticFeedback(feedbackConstant) },
+                pulse * HAPTIC_PULSE_SPACING_MILLIS,
+            )
+        }
+    }
+
     private fun playAcknowledgementChime() {
         val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         RingtoneManager.getRingtone(this, notificationUri)?.play()
     }
 
     companion object {
+        private const val HAPTIC_PULSE_SPACING_MILLIS = 45L
         private const val ACCESS_LOCAL_NETWORK_PERMISSION =
             "android.permission.ACCESS_LOCAL_NETWORK"
     }
