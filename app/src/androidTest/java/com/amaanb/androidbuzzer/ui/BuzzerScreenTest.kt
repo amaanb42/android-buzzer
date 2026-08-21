@@ -92,7 +92,7 @@ class BuzzerScreenTest {
 
         composeRule.onNodeWithText("Local access needed").assertIsDisplayed()
         composeRule.onNodeWithText(
-            "Buzzer only connects to bedroom-buzzer.local on your Wi-Fi network.",
+            "Buzzer only connects to 192.168.50.50 on your Wi-Fi network.",
         ).assertIsDisplayed()
         composeRule.onNodeWithText("Allow access").assertIsDisplayed().assertIsEnabled()
     }

@@ -6,7 +6,7 @@ local Wi-Fi HTTP API and mirrors state changes made by either physical button.
 
 ## Behavior
 
-- The app polls `http://bedroom-buzzer.local/api/status` every 500 ms while its
+- The app polls `http://192.168.50.50/api/status` every 500 ms while its
   screen is visible.
 - **Ring** sends `POST /api/ring`; **Stop** sends `POST /api/stop`.
 - The background is pastel red while stopped and pastel blue while ringing,
@@ -16,9 +16,19 @@ local Wi-Fi HTTP API and mirrors state changes made by either physical button.
 - A failed request keeps the last confirmed state and shows **Offline**. Polling
   automatically recovers when the buzzer becomes reachable again.
 
-The hostname is intentionally fixed. The ESP32 and phone must be connected to
-the same trusted Wi-Fi network. The firmware API is unauthenticated HTTP, and
-the app's cleartext network policy is restricted to `bedroom-buzzer.local`.
+The endpoint is intentionally fixed because the firmware API is unauthenticated
+HTTP. Router 1 must reserve `192.168.50.50` for the ESP32's Wi-Fi MAC address;
+do not create a duplicate reservation on Router 2. Phones connected through
+Router 2 must be able to route to `192.168.50.50` on Router 1's network. After
+restarting the ESP32, verify the reservation and route from each relevant
+network with:
+
+```bash
+curl --noproxy '*' http://192.168.50.50/api/status
+```
+
+Android's cleartext network policy permits local HTTP application-wide, while
+the app keeps the endpoint hardcoded to prevent redirection to arbitrary hosts.
 
 ## Platform and permissions
 

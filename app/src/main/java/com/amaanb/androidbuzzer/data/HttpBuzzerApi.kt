@@ -71,14 +71,14 @@ class HttpBuzzerApi(
     }
 
     companion object {
-        const val DEFAULT_BASE_URL = "http://bedroom-buzzer.local"
+        const val DEFAULT_BASE_URL = "http://192.168.50.50"
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
 
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(1, TimeUnit.SECONDS)
-            .readTimeout(1, TimeUnit.SECONDS)
-            .writeTimeout(1, TimeUnit.SECONDS)
-            .callTimeout(2, TimeUnit.SECONDS)
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(3, TimeUnit.SECONDS)
+            .writeTimeout(3, TimeUnit.SECONDS)
+            .callTimeout(5, TimeUnit.SECONDS)
             .build()
     }
 }

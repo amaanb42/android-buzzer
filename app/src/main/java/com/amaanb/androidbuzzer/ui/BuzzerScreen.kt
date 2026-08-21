@@ -322,7 +322,7 @@ private fun PermissionRequired(
                     text = if (permanentlyDenied) {
                         "Allow local network access in Android settings to reach the buzzer."
                     } else {
-                        "Buzzer only connects to bedroom-buzzer.local on your Wi-Fi network."
+                        "Buzzer only connects to 192.168.50.50 on your Wi-Fi network."
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
