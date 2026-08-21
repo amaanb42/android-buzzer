@@ -1,6 +1,5 @@
 package com.amaanb.androidbuzzer
 
-import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -61,7 +60,8 @@ class MainActivity : ComponentActivity() {
                     ActivityResultContracts.RequestPermission(),
                 ) { granted ->
                     permissionGranted = granted
-                    permissionDenied = !granted
+                    permissionDenied = !granted &&
+                        !shouldShowRequestPermissionRationale(ACCESS_LOCAL_NETWORK_PERMISSION)
                 }
 
                 DisposableEffect(lifecycleOwner) {
@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity() {
                                 ),
                             )
                         } else {
-                            permissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+                            permissionLauncher.launch(ACCESS_LOCAL_NETWORK_PERMISSION)
                         }
                     },
                     snackbarHostState = snackbarHostState,
@@ -122,20 +122,20 @@ class MainActivity : ComponentActivity() {
         Build.VERSION.SDK_INT < 37 ||
             ContextCompat.checkSelfPermission(
                 this,
-                Manifest.permission.ACCESS_LOCAL_NETWORK,
+                ACCESS_LOCAL_NETWORK_PERMISSION,
             ) == PackageManager.PERMISSION_GRANTED
 
     private fun successHaptic(command: BuzzerCommand): Int = when {
         Build.VERSION.SDK_INT >= 34 && command == BuzzerCommand.Ring ->
             HapticFeedbackConstants.TOGGLE_ON
         Build.VERSION.SDK_INT >= 34 -> HapticFeedbackConstants.TOGGLE_OFF
-        Build.VERSION.SDK_INT >= 30 -> HapticFeedbackConstants.CONFIRM
-        else -> HapticFeedbackConstants.VIRTUAL_KEY
+        else -> HapticFeedbackConstants.CONFIRM
     }
 
-    private fun failureHaptic(): Int = if (Build.VERSION.SDK_INT >= 30) {
-        HapticFeedbackConstants.REJECT
-    } else {
-        HapticFeedbackConstants.LONG_PRESS
+    private fun failureHaptic(): Int = HapticFeedbackConstants.REJECT
+
+    companion object {
+        private const val ACCESS_LOCAL_NETWORK_PERMISSION =
+            "android.permission.ACCESS_LOCAL_NETWORK"
     }
 }

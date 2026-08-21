@@ -169,7 +169,7 @@ private fun BuzzerControls(
                     style = MaterialTheme.typography.headlineLarge,
                 )
                 Spacer(Modifier.height(12.dp))
-                ConnectionPill(state.connection, darkTheme)
+                ConnectionPill(state.connection)
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -252,7 +252,7 @@ private fun BuzzerControls(
 }
 
 @Composable
-private fun ConnectionPill(connection: ConnectionState, darkTheme: Boolean) {
+private fun ConnectionPill(connection: ConnectionState) {
     val (label, icon) = when (connection) {
         ConnectionState.Checking -> "Connecting" to Icons.Rounded.WifiFind
         ConnectionState.Connected -> "Connected" to Icons.Rounded.Wifi

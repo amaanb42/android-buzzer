@@ -3,10 +3,13 @@ package com.amaanb.androidbuzzer.ui
 import com.amaanb.androidbuzzer.data.BuzzerCommand
 import com.amaanb.androidbuzzer.data.BuzzerRepository
 import com.amaanb.androidbuzzer.data.BuzzerStatus
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -85,13 +88,31 @@ class BuzzerViewModelTest {
         assertFalse(viewModel.uiState.value.ringing)
     }
 
+    @Test
+    fun `command failure preserves state and emits a visible error`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { sendError = IOException("not reachable") }
+        val viewModel = BuzzerViewModel(repository)
+        val effect = async { viewModel.effects.first() }
+        runCurrent()
+
+        viewModel.toggleRinging()
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.ringing)
+        assertFalse(viewModel.uiState.value.commandInFlight)
+        assertEquals(ConnectionState.Offline, viewModel.uiState.value.connection)
+        assertEquals(BuzzerUiEffect.CommandFailed("not reachable"), effect.await())
+    }
+
     private class FakeRepository : BuzzerRepository {
         val statuses = MutableSharedFlow<Result<BuzzerStatus>>(extraBufferCapacity = 1)
         var lastCommand: BuzzerCommand? = null
+        var sendError: Exception? = null
 
         override fun observeStatus(): Flow<Result<BuzzerStatus>> = statuses
 
         override suspend fun send(command: BuzzerCommand): BuzzerStatus {
+            sendError?.let { throw it }
             lastCommand = command
             return BuzzerStatus(ringing = command == BuzzerCommand.Ring)
         }

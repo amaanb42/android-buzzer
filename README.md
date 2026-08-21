@@ -1,7 +1,7 @@
 # Android Buzzer
 
 Android Buzzer is a small Jetpack Compose remote for the bedroom unit in the
-[`wireless-buzzer`](../wireless-buzzer/README.md) project. It uses the buzzer's
+[`wireless-buzzer`](../../wireless-buzzer/README.md) project. It uses the buzzer's
 local Wi-Fi HTTP API and mirrors state changes made by either physical button.
 
 ## Behavior
