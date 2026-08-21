@@ -28,6 +28,7 @@ data class BuzzerUiState(
     val ringing: Boolean = false,
     val connection: ConnectionState = ConnectionState.Checking,
     val commandInFlight: Boolean = false,
+    val acknowledgementVisible: Boolean = false,
 )
 
 sealed interface BuzzerUiEffect {
@@ -75,7 +76,15 @@ class BuzzerViewModel(
                         consecutivePollFailures = 0
                         lastConfirmedRinging = status.ringing
                         _uiState.update {
-                            it.copy(ringing = status.ringing, connection = ConnectionState.Connected)
+                            it.copy(
+                                ringing = status.ringing,
+                                connection = ConnectionState.Connected,
+                                acknowledgementVisible = when {
+                                    externallyStopped -> true
+                                    status.ringing -> false
+                                    else -> it.acknowledgementVisible
+                                },
+                            )
                         }
                         if (externallyStopped) {
                             _effects.tryEmit(BuzzerUiEffect.ExternalAcknowledgement)
@@ -102,7 +111,13 @@ class BuzzerViewModel(
         val command = if (targetRinging) BuzzerCommand.Ring else BuzzerCommand.Stop
         val generation = ++commandGeneration
 
-        _uiState.update { it.copy(ringing = targetRinging, commandInFlight = true) }
+        _uiState.update {
+            it.copy(
+                ringing = targetRinging,
+                commandInFlight = true,
+                acknowledgementVisible = false,
+            )
+        }
         commandJob?.cancel()
         cancelPolling()
 

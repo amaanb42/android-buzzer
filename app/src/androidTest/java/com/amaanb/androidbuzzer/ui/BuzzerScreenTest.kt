@@ -80,6 +80,27 @@ class BuzzerScreenTest {
     }
 
     @Test
+    fun acknowledgedStateShowsZakiBelowTheButton() {
+        composeRule.setContent {
+            BuzzerTheme(darkTheme = false) {
+                BuzzerScreen(
+                    state = BuzzerUiState(
+                        connection = ConnectionState.Connected,
+                        acknowledgementVisible = true,
+                    ),
+                    hasLocalNetworkPermission = true,
+                    permissionPermanentlyDenied = false,
+                    onToggleRinging = {},
+                    onRequestPermission = {},
+                    snackbarHostState = SnackbarHostState(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Zaki acknowledged buzzer.").assertIsDisplayed()
+    }
+
+    @Test
     fun missingPermissionShowsPermissionExplanation() {
         composeRule.setContent {
             BuzzerTheme(darkTheme = false) {

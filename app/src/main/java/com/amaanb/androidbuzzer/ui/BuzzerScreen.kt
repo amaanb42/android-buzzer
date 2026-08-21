@@ -1,11 +1,15 @@
 package com.amaanb.androidbuzzer.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,13 +55,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.amaanb.androidbuzzer.R
 import com.amaanb.androidbuzzer.data.HttpBuzzerApi
 import com.amaanb.androidbuzzer.ui.theme.BuzzerTheme
 import com.amaanb.androidbuzzer.ui.theme.IdleBackgroundDark
@@ -234,6 +243,43 @@ private fun BuzzerControls(
                             Spacer(Modifier.height(4.dp))
                             Text("Updating…", style = MaterialTheme.typography.labelMedium)
                         }
+                    }
+                }
+                AnimatedVisibility(
+                    visible = state.acknowledgementVisible,
+                    enter = fadeIn(
+                        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                    ) + expandVertically(
+                        animationSpec = MaterialTheme.motionScheme.slowSpatialSpec(),
+                        expandFrom = Alignment.Top,
+                    ),
+                    exit = fadeOut(
+                        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                    ) + shrinkVertically(
+                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        shrinkTowards = Alignment.Top,
+                    ),
+                    label = "acknowledgement",
+                ) {
+                    Column(
+                        modifier = Modifier.padding(top = 18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.zaki_acknowledged),
+                            contentDescription = "Zaki",
+                            modifier = Modifier
+                                .size(132.dp)
+                                .clip(RoundedCornerShape(32.dp)),
+                            contentScale = ContentScale.Crop,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = stringResource(R.string.buzzer_acknowledged),
+                            color = contentColor(darkTheme),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                     }
                 }
             }

@@ -72,6 +72,10 @@ class BuzzerViewModelTest {
         runCurrent()
 
         assertEquals(BuzzerUiEffect.ExternalAcknowledgement, effect.await())
+        assertTrue(viewModel.uiState.value.acknowledgementVisible)
+
+        viewModel.toggleRinging()
+        assertFalse(viewModel.uiState.value.acknowledgementVisible)
     }
 
     @Test
