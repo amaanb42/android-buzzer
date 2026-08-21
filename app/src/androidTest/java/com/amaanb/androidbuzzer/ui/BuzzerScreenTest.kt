@@ -74,4 +74,26 @@ class BuzzerScreenTest {
         composeRule.onNodeWithText("Local access needed").assertIsDisplayed()
         composeRule.onNodeWithText("Allow access").assertIsDisplayed()
     }
+
+    @Test
+    fun missingPermissionIsReadableInDarkTheme() {
+        composeRule.setContent {
+            BuzzerTheme(darkTheme = true) {
+                BuzzerScreen(
+                    state = BuzzerUiState(),
+                    hasLocalNetworkPermission = false,
+                    permissionPermanentlyDenied = false,
+                    onToggleRinging = {},
+                    onRequestPermission = {},
+                    snackbarHostState = SnackbarHostState(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Local access needed").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Buzzer only connects to bedroom-buzzer.local on your Wi-Fi network.",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("Allow access").assertIsDisplayed().assertIsEnabled()
+    }
 }

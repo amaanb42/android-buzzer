@@ -297,7 +297,9 @@ private fun PermissionRequired(
     ) {
         Surface(
             shape = RoundedCornerShape(36.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shadowElevation = 4.dp,
         ) {
             Column(
                 modifier = Modifier.padding(28.dp),
@@ -322,6 +324,7 @@ private fun PermissionRequired(
                     } else {
                         "Buzzer only connects to bedroom-buzzer.local on your Wi-Fi network."
                     },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyLarge,
                 )
@@ -382,6 +385,21 @@ private fun RingingPreview() {
         BuzzerScreen(
             state = BuzzerUiState(ringing = true, connection = ConnectionState.Connected),
             hasLocalNetworkPermission = true,
+            permissionPermanentlyDenied = false,
+            onToggleRinging = {},
+            onRequestPermission = {},
+            snackbarHostState = SnackbarHostState(),
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun DarkPermissionPreview() {
+    BuzzerTheme(darkTheme = true) {
+        BuzzerScreen(
+            state = BuzzerUiState(),
+            hasLocalNetworkPermission = false,
             permissionPermanentlyDenied = false,
             onToggleRinging = {},
             onRequestPermission = {},
