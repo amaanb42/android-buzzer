@@ -32,6 +32,7 @@ data class BuzzerUiState(
     val commandInFlight: Boolean = false,
     val pendingCommand: BuzzerCommand? = null,
     val acknowledgementVisible: Boolean = false,
+    val timeoutVisible: Boolean = false,
 )
 
 sealed interface BuzzerUiEffect {
@@ -120,6 +121,7 @@ class BuzzerViewModel(
                 pendingCommand = command,
                 commandInFlight = false,
                 acknowledgementVisible = false,
+                timeoutVisible = false,
             )
         }
 
@@ -206,6 +208,7 @@ class BuzzerViewModel(
                     commandInFlight = false,
                     pendingCommand = null,
                     acknowledgementVisible = true,
+                    timeoutVisible = false,
                 )
             }
             _effects.tryEmit(BuzzerUiEffect.ExternalAcknowledgement)
@@ -220,6 +223,8 @@ class BuzzerViewModel(
                     connection = ConnectionState.Connected,
                     commandInFlight = false,
                     pendingCommand = null,
+                    timeoutVisible = !status.ringing &&
+                        status.source == BuzzerChangeSource.Timeout,
                 )
             }
             _effects.tryEmit(BuzzerUiEffect.CommandSucceeded(command))
@@ -234,6 +239,7 @@ class BuzzerViewModel(
         val externallyStopped = lastConfirmedRinging == true &&
             !status.ringing &&
             (status.source == BuzzerChangeSource.BedroomButton || status.source == null)
+        val timedOut = !status.ringing && status.source == BuzzerChangeSource.Timeout
         consecutivePollFailures = 0
         lastConfirmedRinging = status.ringing
         _uiState.update {
@@ -241,6 +247,7 @@ class BuzzerViewModel(
                 ringing = status.ringing,
                 connection = ConnectionState.Connected,
                 pendingCommand = null,
+                timeoutVisible = timedOut,
                 acknowledgementVisible = when {
                     externallyStopped -> true
                     status.ringing -> false
@@ -269,6 +276,7 @@ class BuzzerViewModel(
                 commandInFlight = false,
                 pendingCommand = null,
                 acknowledgementVisible = quicklyAcknowledged,
+                timeoutVisible = !status.ringing && status.source == BuzzerChangeSource.Timeout,
             )
         }
 

@@ -22,6 +22,9 @@ enum class BuzzerChangeSource {
 
     @SerialName("hc12")
     Hc12,
+
+    @SerialName("timeout")
+    Timeout,
 }
 
 enum class BuzzerCommand {

@@ -114,6 +114,49 @@ class BuzzerViewModelTest {
     }
 
     @Test
+    fun `timeout status shows notice until ring is requested`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = BuzzerViewModel(repository)
+        viewModel.startPolling()
+        runCurrent()
+
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = true)))
+        runCurrent()
+        repository.statuses.emit(
+            Result.success(BuzzerStatus(ringing = false, source = BuzzerChangeSource.Timeout)),
+        )
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.ringing)
+        assertTrue(viewModel.uiState.value.timeoutVisible)
+        assertFalse(viewModel.uiState.value.acknowledgementVisible)
+
+        viewModel.toggleRinging()
+
+        assertFalse(viewModel.uiState.value.timeoutVisible)
+        assertTrue(viewModel.uiState.value.ringing)
+    }
+
+    @Test
+    fun `non-timeout status clears timeout notice`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = BuzzerViewModel(repository)
+        viewModel.startPolling()
+        runCurrent()
+
+        repository.statuses.emit(
+            Result.success(BuzzerStatus(ringing = false, source = BuzzerChangeSource.Timeout)),
+        )
+        runCurrent()
+        repository.statuses.emit(
+            Result.success(BuzzerStatus(ringing = false, source = BuzzerChangeSource.Api)),
+        )
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.timeoutVisible)
+    }
+
+    @Test
     fun `three poll failures are required before connection is offline`() = runTest(dispatcher) {
         val repository = FakeRepository()
         val viewModel = BuzzerViewModel(repository)

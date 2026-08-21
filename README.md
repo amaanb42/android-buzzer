@@ -25,6 +25,8 @@ local Wi-Fi HTTP API and mirrors state changes made by either physical button.
 - A single failed status request keeps the last confirmed state and connection.
   **Offline** appears after three consecutive failures, and polling automatically
   recovers when the buzzer becomes reachable again.
+- If the bedroom unit stops ringing after its 150-second acknowledgement timeout,
+  the app explains the timeout and offers Ring again.
 
 The endpoint is intentionally fixed because the firmware API is unauthenticated
 HTTP. Router 1 must reserve `192.168.50.50` for the ESP32's Wi-Fi MAC address;

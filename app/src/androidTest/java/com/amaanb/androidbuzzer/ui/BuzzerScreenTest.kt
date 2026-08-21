@@ -155,6 +155,32 @@ class BuzzerScreenTest {
     }
 
     @Test
+    fun timeoutStateShowsTimeoutMessage() {
+        composeRule.setContent {
+            BuzzerTheme(darkTheme = false) {
+                BuzzerScreen(
+                    state = BuzzerUiState(
+                        connection = ConnectionState.Connected,
+                        timeoutVisible = true,
+                    ),
+                    hasLocalNetworkPermission = true,
+                    permissionPermanentlyDenied = false,
+                    onToggleRinging = {},
+                    onRequestPermission = {},
+                    snackbarHostState = SnackbarHostState(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(
+            "Ringing was never acknowledged after 2.5 minutes and the buzzer has timed out. " +
+                "Press the Ring button to re-activate the buzzer.",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("Idle").assertIsDisplayed()
+        composeRule.onNodeWithText("Ring").assertIsEnabled()
+    }
+
+    @Test
     fun acknowledgedStateShowsZakiBelowTheButton() {
         composeRule.setContent {
             BuzzerTheme(darkTheme = false) {

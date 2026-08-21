@@ -213,9 +213,17 @@ private fun BuzzerControls(
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                if (state.pendingCommand != null) {
+                val statusMessage = when {
+                    state.pendingCommand != null ->
+                        "Command will be sent once connection is established."
+                    state.timeoutVisible ->
+                        "Ringing was never acknowledged after 2.5 minutes and the buzzer has " +
+                            "timed out. Press the Ring button to re-activate the buzzer."
+                    else -> null
+                }
+                if (statusMessage != null) {
                     Text(
-                        text = "Command will be sent once connection is established.",
+                        text = statusMessage,
                         modifier = Modifier.padding(bottom = 16.dp),
                         color = contentColor(darkTheme),
                         textAlign = TextAlign.Center,
@@ -223,12 +231,12 @@ private fun BuzzerControls(
                     )
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = stateLabel,
-                            color = contentColor(darkTheme),
-                            style = MaterialTheme.typography.displaySmall,
-                        )
-                        Spacer(Modifier.height(24.dp))
+                    Text(
+                        text = stateLabel,
+                        color = contentColor(darkTheme),
+                        style = MaterialTheme.typography.displaySmall,
+                    )
+                    Spacer(Modifier.height(24.dp))
                 }
                 Button(
                     onClick = onToggleRinging,

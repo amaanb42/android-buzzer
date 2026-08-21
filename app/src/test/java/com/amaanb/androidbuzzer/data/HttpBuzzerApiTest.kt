@@ -53,6 +53,16 @@ class HttpBuzzerApiTest {
     }
 
     @Test
+    fun `status parses timeout source`() = runTest {
+        server.enqueue(MockResponse().setBody("{\"ringing\":false,\"source\":\"timeout\"}"))
+
+        val status = api.getStatus()
+
+        assertFalse(status.ringing)
+        assertEquals(BuzzerChangeSource.Timeout, status.source)
+    }
+
+    @Test
     fun `ring and stop use POST and return confirmed state`() = runTest {
         server.enqueue(MockResponse().setBody("{\"ringing\":true}"))
         server.enqueue(MockResponse().setBody("{\"ringing\":false}"))
