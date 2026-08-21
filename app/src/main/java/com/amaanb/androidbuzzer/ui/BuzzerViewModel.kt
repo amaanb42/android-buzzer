@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.amaanb.androidbuzzer.data.BuzzerCommand
+import com.amaanb.androidbuzzer.data.BuzzerChangeSource
 import com.amaanb.androidbuzzer.data.BuzzerRepository
+import com.amaanb.androidbuzzer.data.BuzzerStatus
 import com.amaanb.androidbuzzer.data.CommandOutcome
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
@@ -55,6 +57,7 @@ class BuzzerViewModel(
     private var commandGeneration = 0L
     private var consecutivePollFailures = 0
     private var lastConfirmedRinging: Boolean? = null
+    private var pendingReconciliation: BuzzerCommand? = null
 
     fun startPolling() {
         pollingRequested = true
@@ -72,28 +75,27 @@ class BuzzerViewModel(
                 if (generation != pollingGeneration) return@collectLatest
                 result.fold(
                     onSuccess = { status ->
-                        val externallyStopped = lastConfirmedRinging == true && !status.ringing
-                        consecutivePollFailures = 0
-                        lastConfirmedRinging = status.ringing
-                        _uiState.update {
-                            it.copy(
-                                ringing = status.ringing,
-                                connection = ConnectionState.Connected,
-                                acknowledgementVisible = when {
-                                    externallyStopped -> true
-                                    status.ringing -> false
-                                    else -> it.acknowledgementVisible
-                                },
-                            )
-                        }
-                        if (externallyStopped) {
-                            _effects.tryEmit(BuzzerUiEffect.ExternalAcknowledgement)
-                        }
+                        handlePolledStatus(status)
                     },
                     onFailure = {
                         consecutivePollFailures++
                         if (consecutivePollFailures >= OFFLINE_FAILURE_THRESHOLD) {
-                            _uiState.update { it.copy(connection = ConnectionState.Offline) }
+                            val unresolvedCommand = pendingReconciliation
+                            pendingReconciliation = null
+                            _uiState.update {
+                                it.copy(
+                                    ringing = lastConfirmedRinging ?: false,
+                                    connection = ConnectionState.Offline,
+                                    commandInFlight = false,
+                                )
+                            }
+                            if (unresolvedCommand != null) {
+                                _effects.tryEmit(
+                                    BuzzerUiEffect.CommandFailed(
+                                        "Could not reach the bedroom buzzer",
+                                    ),
+                                )
+                            }
                         }
                     },
                 )
@@ -111,6 +113,7 @@ class BuzzerViewModel(
         val command = if (targetRinging) BuzzerCommand.Ring else BuzzerCommand.Stop
         val generation = ++commandGeneration
 
+        pendingReconciliation = null
         _uiState.update {
             it.copy(
                 ringing = targetRinging,
@@ -128,66 +131,91 @@ class BuzzerViewModel(
 
                 when (outcome) {
                     is CommandOutcome.Confirmed -> {
-                        consecutivePollFailures = 0
-                        lastConfirmedRinging = outcome.status.ringing
-                        _uiState.update {
-                            it.copy(
-                                ringing = outcome.status.ringing,
-                                connection = ConnectionState.Connected,
-                                commandInFlight = false,
-                            )
-                        }
-                        _effects.emit(BuzzerUiEffect.CommandSucceeded(command))
+                        resolveCommandWithStatus(command, outcome.status)
                     }
 
                     is CommandOutcome.NotApplied -> {
-                        consecutivePollFailures = 0
-                        lastConfirmedRinging = outcome.status.ringing
-                        _uiState.update {
-                            it.copy(
-                                ringing = outcome.status.ringing,
-                                connection = ConnectionState.Connected,
-                                commandInFlight = false,
-                            )
-                        }
-                        _effects.emit(BuzzerUiEffect.CommandFailed(notAppliedMessage(command)))
+                        resolveCommandWithStatus(command, outcome.status)
                     }
 
                     is CommandOutcome.Unreachable -> {
-                        consecutivePollFailures = OFFLINE_FAILURE_THRESHOLD
-                        _uiState.update {
-                            it.copy(
-                                ringing = lastConfirmedRinging ?: false,
-                                connection = ConnectionState.Offline,
-                                commandInFlight = false,
-                            )
-                        }
-                        _effects.emit(
-                            BuzzerUiEffect.CommandFailed("Could not reach the bedroom buzzer"),
-                        )
+                        pendingReconciliation = command
+                        consecutivePollFailures = 0
                     }
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
                 if (generation == commandGeneration) {
-                    consecutivePollFailures = OFFLINE_FAILURE_THRESHOLD
-                    _uiState.update {
-                        it.copy(
-                            ringing = lastConfirmedRinging ?: false,
-                            connection = ConnectionState.Offline,
-                            commandInFlight = false,
-                        )
-                    }
-                    _effects.emit(
-                        BuzzerUiEffect.CommandFailed("Could not reach the bedroom buzzer"),
-                    )
+                    pendingReconciliation = command
+                    consecutivePollFailures = 0
                 }
             } finally {
                 if (generation == commandGeneration) {
                     commandJob = null
                     startPollingIfNeeded()
                 }
+            }
+        }
+    }
+
+    private fun handlePolledStatus(status: BuzzerStatus) {
+        val unresolvedCommand = pendingReconciliation
+        if (unresolvedCommand != null) {
+            pendingReconciliation = null
+            resolveCommandWithStatus(unresolvedCommand, status)
+            return
+        }
+
+        val externallyStopped = lastConfirmedRinging == true &&
+            !status.ringing &&
+            (status.source == BuzzerChangeSource.BedroomButton || status.source == null)
+        consecutivePollFailures = 0
+        lastConfirmedRinging = status.ringing
+        _uiState.update {
+            it.copy(
+                ringing = status.ringing,
+                connection = ConnectionState.Connected,
+                acknowledgementVisible = when {
+                    externallyStopped -> true
+                    status.ringing -> false
+                    else -> it.acknowledgementVisible
+                },
+            )
+        }
+        if (externallyStopped) {
+            _effects.tryEmit(BuzzerUiEffect.ExternalAcknowledgement)
+        }
+    }
+
+    private fun resolveCommandWithStatus(command: BuzzerCommand, status: BuzzerStatus) {
+        val expectedRinging = command == BuzzerCommand.Ring
+        val quicklyAcknowledged = command == BuzzerCommand.Ring &&
+            !status.ringing &&
+            status.source == BuzzerChangeSource.BedroomButton
+
+        consecutivePollFailures = 0
+        lastConfirmedRinging = status.ringing
+        _uiState.update {
+            it.copy(
+                ringing = status.ringing,
+                connection = ConnectionState.Connected,
+                commandInFlight = false,
+                acknowledgementVisible = quicklyAcknowledged,
+            )
+        }
+
+        when {
+            quicklyAcknowledged -> {
+                _effects.tryEmit(BuzzerUiEffect.ExternalAcknowledgement)
+            }
+
+            status.ringing == expectedRinging -> {
+                _effects.tryEmit(BuzzerUiEffect.CommandSucceeded(command))
+            }
+
+            else -> {
+                _effects.tryEmit(BuzzerUiEffect.CommandFailed(notAppliedMessage(command)))
             }
         }
     }

@@ -30,13 +30,26 @@ class HttpBuzzerApiTest {
 
     @Test
     fun `status uses GET and parses ringing state`() = runTest {
-        server.enqueue(MockResponse().setBody("{\"ringing\":true}"))
+        server.enqueue(
+            MockResponse().setBody("{\"ringing\":true,\"source\":\"bedroom_button\"}"),
+        )
 
-        assertTrue(api.getStatus().ringing)
+        val status = api.getStatus()
+        assertTrue(status.ringing)
+        assertEquals(BuzzerChangeSource.BedroomButton, status.source)
         server.takeRequest().apply {
             assertEquals("GET", method)
             assertEquals("/api/status", path)
         }
+    }
+
+    @Test
+    fun `legacy and future status sources remain compatible`() = runTest {
+        server.enqueue(MockResponse().setBody("{\"ringing\":false}"))
+        server.enqueue(MockResponse().setBody("{\"ringing\":false,\"source\":\"future_source\"}"))
+
+        assertEquals(null, api.getStatus().source)
+        assertEquals(null, api.getStatus().source)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.amaanb.androidbuzzer.ui
 
 import com.amaanb.androidbuzzer.data.BuzzerCommand
+import com.amaanb.androidbuzzer.data.BuzzerChangeSource
 import com.amaanb.androidbuzzer.data.BuzzerRepository
 import com.amaanb.androidbuzzer.data.BuzzerStatus
 import com.amaanb.androidbuzzer.data.CommandOutcome
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -51,9 +53,42 @@ class BuzzerViewModelTest {
         assertTrue(viewModel.uiState.value.ringing)
         assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
 
-        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        repository.statuses.emit(
+            Result.success(
+                BuzzerStatus(
+                    ringing = false,
+                    source = BuzzerChangeSource.BedroomButton,
+                ),
+            ),
+        )
         runCurrent()
         assertFalse(viewModel.uiState.value.ringing)
+    }
+
+    @Test
+    fun `api and HC12 stops do not emit acknowledgements`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = BuzzerViewModel(repository)
+        val effects = mutableListOf<BuzzerUiEffect>()
+        backgroundScope.launch(dispatcher) { viewModel.effects.collect { effects += it } }
+        viewModel.startPolling()
+        runCurrent()
+
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = true)))
+        runCurrent()
+        repository.statuses.emit(
+            Result.success(BuzzerStatus(ringing = false, source = BuzzerChangeSource.Api)),
+        )
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = true)))
+        runCurrent()
+        repository.statuses.emit(
+            Result.success(BuzzerStatus(ringing = false, source = BuzzerChangeSource.Hc12)),
+        )
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.acknowledgementVisible)
+        assertFalse(effects.contains(BuzzerUiEffect.ExternalAcknowledgement))
     }
 
     @Test
@@ -145,7 +180,7 @@ class BuzzerViewModelTest {
     }
 
     @Test
-    fun `unreachable command restores confirmed state and emits a generic error`() = runTest(dispatcher) {
+    fun `unreachable command reconciles before error`() = runTest(dispatcher) {
         val repository = FakeRepository()
         val viewModel = BuzzerViewModel(repository)
         viewModel.startPolling()
@@ -161,6 +196,19 @@ class BuzzerViewModelTest {
         viewModel.toggleRinging()
         runCurrent()
 
+        assertTrue(viewModel.uiState.value.ringing)
+        assertTrue(viewModel.uiState.value.commandInFlight)
+        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
+
+        repeat(2) {
+            repository.statuses.emit(Result.failure(IllegalStateException("offline")))
+            runCurrent()
+        }
+        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
+
+        repository.statuses.emit(Result.failure(IllegalStateException("offline")))
+        runCurrent()
+
         assertFalse(viewModel.uiState.value.ringing)
         assertFalse(viewModel.uiState.value.commandInFlight)
         assertEquals(ConnectionState.Offline, viewModel.uiState.value.connection)
@@ -168,6 +216,66 @@ class BuzzerViewModelTest {
             BuzzerUiEffect.CommandFailed("Could not reach the bedroom buzzer"),
             effect.await(),
         )
+    }
+
+    @Test
+    fun `lost app stop response is reconciled silently`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply {
+            sendBlock = {
+                CommandOutcome.Unreachable(IllegalStateException("response lost"))
+            }
+        }
+        val viewModel = BuzzerViewModel(repository)
+        viewModel.startPolling()
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = true)))
+        runCurrent()
+        val effect = async { viewModel.effects.first() }
+        runCurrent()
+
+        viewModel.toggleRinging()
+        runCurrent()
+        repository.statuses.emit(
+            Result.success(BuzzerStatus(ringing = false, source = BuzzerChangeSource.Api)),
+        )
+        runCurrent()
+
+        assertEquals(BuzzerUiEffect.CommandSucceeded(BuzzerCommand.Stop), effect.await())
+        assertFalse(viewModel.uiState.value.acknowledgementVisible)
+        assertFalse(viewModel.uiState.value.commandInFlight)
+        assertEquals(ConnectionState.Connected, viewModel.uiState.value.connection)
+    }
+
+    @Test
+    fun `quick bedroom acknowledgement resolves an unconfirmed ring`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply {
+            sendBlock = {
+                CommandOutcome.Unreachable(IllegalStateException("response lost"))
+            }
+        }
+        val viewModel = BuzzerViewModel(repository)
+        viewModel.startPolling()
+        runCurrent()
+        repository.statuses.emit(Result.success(BuzzerStatus(ringing = false)))
+        runCurrent()
+        val effect = async { viewModel.effects.first() }
+        runCurrent()
+
+        viewModel.toggleRinging()
+        runCurrent()
+        repository.statuses.emit(
+            Result.success(
+                BuzzerStatus(
+                    ringing = false,
+                    source = BuzzerChangeSource.BedroomButton,
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(BuzzerUiEffect.ExternalAcknowledgement, effect.await())
+        assertTrue(viewModel.uiState.value.acknowledgementVisible)
+        assertFalse(viewModel.uiState.value.commandInFlight)
     }
 
     @Test

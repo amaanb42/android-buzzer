@@ -18,7 +18,10 @@ import okhttp3.Response
 class HttpBuzzerApi(
     baseUrl: String = DEFAULT_BASE_URL,
     private val client: OkHttpClient = defaultClient(),
-    private val json: Json = Json { ignoreUnknownKeys = true },
+    private val json: Json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+    },
 ) : BuzzerApi {
     private val baseUrl = baseUrl.trimEnd('/')
 
