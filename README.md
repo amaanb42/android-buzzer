@@ -13,8 +13,11 @@ local Wi-Fi HTTP API and mirrors state changes made by either physical button.
   with deeper matching colors in dark mode.
 - Successful Ring and Stop actions produce semantic haptic feedback. Failed
   actions produce rejection feedback and a visible error.
-- A failed request keeps the last confirmed state and shows **Offline**. Polling
-  automatically recovers when the buzzer becomes reachable again.
+- Ring and Stop update immediately, and rapid taps converge on the latest choice.
+  Commands preempt polling, retry once, and verify status before reporting an error.
+- A single failed status request keeps the last confirmed state and connection.
+  **Offline** appears after three consecutive failures, and polling automatically
+  recovers when the buzzer becomes reachable again.
 
 The endpoint is intentionally fixed because the firmware API is unauthenticated
 HTTP. Router 1 must reserve `192.168.50.50` for the ESP32's Wi-Fi MAC address;

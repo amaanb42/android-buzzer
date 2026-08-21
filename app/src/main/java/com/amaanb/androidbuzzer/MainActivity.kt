@@ -2,11 +2,13 @@ package com.amaanb.androidbuzzer
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -91,6 +93,15 @@ class MainActivity : ComponentActivity() {
                                 view.performHapticFeedback(failureHaptic())
                                 snackbarHostState.showSnackbar(effect.message)
                             }
+
+                            BuzzerUiEffect.ExternalAcknowledgement -> {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    R.string.buzzer_acknowledged,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                playAcknowledgementChime()
+                            }
                         }
                     }
                 }
@@ -133,6 +144,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun failureHaptic(): Int = HapticFeedbackConstants.REJECT
+
+    private fun playAcknowledgementChime() {
+        val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        RingtoneManager.getRingtone(this, notificationUri)?.play()
+    }
 
     companion object {
         private const val ACCESS_LOCAL_NETWORK_PERMISSION =

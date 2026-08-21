@@ -57,6 +57,29 @@ class BuzzerScreenTest {
     }
 
     @Test
+    fun pendingStateKeepsLatestControlEnabled() {
+        composeRule.setContent {
+            BuzzerTheme(darkTheme = false) {
+                BuzzerScreen(
+                    state = BuzzerUiState(
+                        ringing = true,
+                        connection = ConnectionState.Connected,
+                        commandInFlight = true,
+                    ),
+                    hasLocalNetworkPermission = true,
+                    permissionPermanentlyDenied = false,
+                    onToggleRinging = {},
+                    onRequestPermission = {},
+                    snackbarHostState = SnackbarHostState(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Stop").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithText("Updating…").assertIsDisplayed()
+    }
+
+    @Test
     fun missingPermissionShowsPermissionExplanation() {
         composeRule.setContent {
             BuzzerTheme(darkTheme = false) {

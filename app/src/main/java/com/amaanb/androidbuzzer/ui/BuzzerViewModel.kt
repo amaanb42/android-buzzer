@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.amaanb.androidbuzzer.data.BuzzerCommand
 import com.amaanb.androidbuzzer.data.BuzzerRepository
+import com.amaanb.androidbuzzer.data.CommandOutcome
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -33,6 +34,8 @@ sealed interface BuzzerUiEffect {
     data class CommandSucceeded(val command: BuzzerCommand) : BuzzerUiEffect
 
     data class CommandFailed(val message: String) : BuzzerUiEffect
+
+    data object ExternalAcknowledgement : BuzzerUiEffect
 }
 
 class BuzzerViewModel(
@@ -45,20 +48,44 @@ class BuzzerViewModel(
     val effects: SharedFlow<BuzzerUiEffect> = _effects.asSharedFlow()
 
     private var pollingJob: Job? = null
+    private var commandJob: Job? = null
+    private var pollingRequested = false
+    private var pollingGeneration = 0L
+    private var commandGeneration = 0L
+    private var consecutivePollFailures = 0
+    private var lastConfirmedRinging: Boolean? = null
 
     fun startPolling() {
-        if (pollingJob?.isActive == true) return
+        pollingRequested = true
+        startPollingIfNeeded()
+    }
 
+    private fun startPollingIfNeeded() {
+        if (!pollingRequested || commandJob?.isActive == true || pollingJob?.isActive == true) {
+            return
+        }
+
+        val generation = ++pollingGeneration
         pollingJob = viewModelScope.launch {
             repository.observeStatus().collectLatest { result ->
+                if (generation != pollingGeneration) return@collectLatest
                 result.fold(
                     onSuccess = { status ->
+                        val externallyStopped = lastConfirmedRinging == true && !status.ringing
+                        consecutivePollFailures = 0
+                        lastConfirmedRinging = status.ringing
                         _uiState.update {
                             it.copy(ringing = status.ringing, connection = ConnectionState.Connected)
                         }
+                        if (externallyStopped) {
+                            _effects.tryEmit(BuzzerUiEffect.ExternalAcknowledgement)
+                        }
                     },
                     onFailure = {
-                        _uiState.update { it.copy(connection = ConnectionState.Offline) }
+                        consecutivePollFailures++
+                        if (consecutivePollFailures >= OFFLINE_FAILURE_THRESHOLD) {
+                            _uiState.update { it.copy(connection = ConnectionState.Offline) }
+                        }
                     },
                 )
             }
@@ -66,41 +93,99 @@ class BuzzerViewModel(
     }
 
     fun stopPolling() {
+        pollingRequested = false
+        cancelPolling()
+    }
+
+    fun toggleRinging() {
+        val targetRinging = !_uiState.value.ringing
+        val command = if (targetRinging) BuzzerCommand.Ring else BuzzerCommand.Stop
+        val generation = ++commandGeneration
+
+        _uiState.update { it.copy(ringing = targetRinging, commandInFlight = true) }
+        commandJob?.cancel()
+        cancelPolling()
+
+        commandJob = viewModelScope.launch {
+            try {
+                val outcome = repository.send(command)
+                if (generation != commandGeneration) return@launch
+
+                when (outcome) {
+                    is CommandOutcome.Confirmed -> {
+                        consecutivePollFailures = 0
+                        lastConfirmedRinging = outcome.status.ringing
+                        _uiState.update {
+                            it.copy(
+                                ringing = outcome.status.ringing,
+                                connection = ConnectionState.Connected,
+                                commandInFlight = false,
+                            )
+                        }
+                        _effects.emit(BuzzerUiEffect.CommandSucceeded(command))
+                    }
+
+                    is CommandOutcome.NotApplied -> {
+                        consecutivePollFailures = 0
+                        lastConfirmedRinging = outcome.status.ringing
+                        _uiState.update {
+                            it.copy(
+                                ringing = outcome.status.ringing,
+                                connection = ConnectionState.Connected,
+                                commandInFlight = false,
+                            )
+                        }
+                        _effects.emit(BuzzerUiEffect.CommandFailed(notAppliedMessage(command)))
+                    }
+
+                    is CommandOutcome.Unreachable -> {
+                        consecutivePollFailures = OFFLINE_FAILURE_THRESHOLD
+                        _uiState.update {
+                            it.copy(
+                                ringing = lastConfirmedRinging ?: false,
+                                connection = ConnectionState.Offline,
+                                commandInFlight = false,
+                            )
+                        }
+                        _effects.emit(
+                            BuzzerUiEffect.CommandFailed("Could not reach the bedroom buzzer"),
+                        )
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (generation == commandGeneration) {
+                    consecutivePollFailures = OFFLINE_FAILURE_THRESHOLD
+                    _uiState.update {
+                        it.copy(
+                            ringing = lastConfirmedRinging ?: false,
+                            connection = ConnectionState.Offline,
+                            commandInFlight = false,
+                        )
+                    }
+                    _effects.emit(
+                        BuzzerUiEffect.CommandFailed("Could not reach the bedroom buzzer"),
+                    )
+                }
+            } finally {
+                if (generation == commandGeneration) {
+                    commandJob = null
+                    startPollingIfNeeded()
+                }
+            }
+        }
+    }
+
+    private fun cancelPolling() {
+        pollingGeneration++
         pollingJob?.cancel()
         pollingJob = null
     }
 
-    fun toggleRinging() {
-        val current = _uiState.value
-        if (current.commandInFlight) return
-
-        val command = if (current.ringing) BuzzerCommand.Stop else BuzzerCommand.Ring
-        _uiState.update { it.copy(commandInFlight = true) }
-
-        viewModelScope.launch {
-            try {
-                val status = repository.send(command)
-                _uiState.update {
-                    it.copy(
-                        ringing = status.ringing,
-                        connection = ConnectionState.Connected,
-                        commandInFlight = false,
-                    )
-                }
-                _effects.emit(BuzzerUiEffect.CommandSucceeded(command))
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                _uiState.update {
-                    it.copy(connection = ConnectionState.Offline, commandInFlight = false)
-                }
-                _effects.emit(
-                    BuzzerUiEffect.CommandFailed(
-                        error.message ?: "Could not reach the bedroom buzzer",
-                    ),
-                )
-            }
-        }
+    private fun notAppliedMessage(command: BuzzerCommand): String = when (command) {
+        BuzzerCommand.Ring -> "The bedroom buzzer did not start ringing"
+        BuzzerCommand.Stop -> "The bedroom buzzer did not stop"
     }
 
     class Factory(
@@ -111,5 +196,9 @@ class BuzzerViewModel(
             require(modelClass.isAssignableFrom(BuzzerViewModel::class.java))
             return BuzzerViewModel(repository) as T
         }
+    }
+
+    private companion object {
+        const val OFFLINE_FAILURE_THRESHOLD = 3
     }
 }

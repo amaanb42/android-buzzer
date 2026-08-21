@@ -10,7 +10,15 @@ import kotlinx.coroutines.sync.withLock
 interface BuzzerRepository {
     fun observeStatus(): Flow<Result<BuzzerStatus>>
 
-    suspend fun send(command: BuzzerCommand): BuzzerStatus
+    suspend fun send(command: BuzzerCommand): CommandOutcome
+}
+
+sealed interface CommandOutcome {
+    data class Confirmed(val status: BuzzerStatus) : CommandOutcome
+
+    data class NotApplied(val status: BuzzerStatus) : CommandOutcome
+
+    data class Unreachable(val cause: Exception) : CommandOutcome
 }
 
 class DefaultBuzzerRepository(
@@ -33,10 +41,45 @@ class DefaultBuzzerRepository(
         }
     }
 
-    override suspend fun send(command: BuzzerCommand): BuzzerStatus = requestMutex.withLock {
-        when (command) {
-            BuzzerCommand.Ring -> api.ring()
-            BuzzerCommand.Stop -> api.stop()
+    override suspend fun send(command: BuzzerCommand): CommandOutcome {
+        val expectedRinging = command == BuzzerCommand.Ring
+
+        repeat(COMMAND_ATTEMPTS) { attempt ->
+            try {
+                val status = requestMutex.withLock { sendOnce(command) }
+                return if (status.ringing == expectedRinging) {
+                    CommandOutcome.Confirmed(status)
+                } else {
+                    CommandOutcome.NotApplied(status)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (attempt < COMMAND_ATTEMPTS - 1) delay(COMMAND_RETRY_DELAY_MILLIS)
+            }
         }
+
+        return try {
+            val status = requestMutex.withLock { api.getStatus() }
+            if (status.ringing == expectedRinging) {
+                CommandOutcome.Confirmed(status)
+            } else {
+                CommandOutcome.NotApplied(status)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            CommandOutcome.Unreachable(error)
+        }
+    }
+
+    private suspend fun sendOnce(command: BuzzerCommand): BuzzerStatus = when (command) {
+        BuzzerCommand.Ring -> api.ring()
+        BuzzerCommand.Stop -> api.stop()
+    }
+
+    private companion object {
+        const val COMMAND_ATTEMPTS = 2
+        const val COMMAND_RETRY_DELAY_MILLIS = 150L
     }
 }

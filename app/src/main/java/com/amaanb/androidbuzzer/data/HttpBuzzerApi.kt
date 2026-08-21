@@ -37,7 +37,10 @@ class HttpBuzzerApi(
             requestBuilder.post(ByteArray(0).toRequestBody(null))
         }
 
-        val responseBody = client.newCall(requestBuilder.build()).await().use { response ->
+        val call = client.newCall(requestBuilder.build()).apply {
+            timeout().timeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        }
+        val responseBody = call.await().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("Buzzer returned HTTP ${response.code}")
             }
@@ -72,13 +75,14 @@ class HttpBuzzerApi(
 
     companion object {
         const val DEFAULT_BASE_URL = "http://192.168.50.50"
+        private const val CALL_TIMEOUT_SECONDS = 2L
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
 
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(3, TimeUnit.SECONDS)
             .readTimeout(3, TimeUnit.SECONDS)
             .writeTimeout(3, TimeUnit.SECONDS)
-            .callTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
     }
 }

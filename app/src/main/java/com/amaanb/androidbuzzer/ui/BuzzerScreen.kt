@@ -164,7 +164,7 @@ private fun BuzzerControls(
                 horizontalAlignment = Alignment.Start,
             ) {
                 Text(
-                    text = "Bedroom buzzer",
+                    text = "BuzZaki",
                     color = contentColor(darkTheme),
                     style = MaterialTheme.typography.headlineLarge,
                 )
@@ -181,7 +181,6 @@ private fun BuzzerControls(
                 Spacer(Modifier.height(24.dp))
                 Button(
                     onClick = onToggleRinging,
-                    enabled = !state.commandInFlight,
                     modifier = Modifier
                         .size(heroSize)
                         .semantics {
@@ -203,16 +202,7 @@ private fun BuzzerControls(
                     ),
                     contentPadding = PaddingValues(24.dp),
                 ) {
-                    if (state.commandInFlight) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            LoadingIndicator(
-                                modifier = Modifier.size(64.dp),
-                                color = buttonContent,
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Text("Sending…", style = MaterialTheme.typography.labelLarge)
-                        }
-                    } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         AnimatedContent(
                             targetState = state.ringing,
                             transitionSpec = { fadeIn() togetherWith fadeOut() },
@@ -234,6 +224,15 @@ private fun BuzzerControls(
                                     style = MaterialTheme.typography.titleLarge,
                                 )
                             }
+                        }
+                        if (state.commandInFlight) {
+                            Spacer(Modifier.height(8.dp))
+                            LoadingIndicator(
+                                modifier = Modifier.size(28.dp),
+                                color = buttonContent,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text("Updating…", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
