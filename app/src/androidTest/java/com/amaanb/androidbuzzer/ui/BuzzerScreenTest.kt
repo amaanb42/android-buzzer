@@ -173,7 +173,7 @@ class BuzzerScreenTest {
         }
 
         composeRule.onNodeWithText(
-            "Ringing was never acknowledged after 2.5 minutes and the buzzer has timed out. " +
+            "Ringing was never acknowledged after 2.5 minutes. " +
                 "Press the Ring button to re-activate the buzzer.",
         ).assertIsDisplayed()
         composeRule.onNodeWithText("Idle").assertIsDisplayed()
